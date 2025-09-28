@@ -1,12 +1,12 @@
-import { PronoteStudentSession } from 'pronote-api-maintained';
+import { SessionHandle } from 'pawnote';
 import { Account } from '../utils/config';
 import { getUser, setUser } from '../utils/database';
 import sendNotification from '../utils/ifttt';
 import { getGrades } from '../utils/pronote';
 
-export async function iftttGrades(
+export default async function iftttGrades(
   account: Account,
-  session: PronoteStudentSession
+  session: SessionHandle
 ) {
   const key = account.modules.iftttGrades.key;
 

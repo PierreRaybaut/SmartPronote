@@ -1,13 +1,13 @@
-import { PronoteStudentSession } from 'pronote-api-maintained';
+import { SessionHandle } from 'pawnote';
 import { Account } from '../utils/config';
 import { getUser, setUser } from '../utils/database';
 import { getGoogleAPI } from '../utils/google';
 import { SubjectNames } from '../utils/locale';
 import { getHomeworks } from '../utils/pronote';
 
-export async function googleTasks(
+export default async function googleTasks(
   account: Account,
-  session: PronoteStudentSession
+  session: SessionHandle
 ) {
   const homeworks = await getHomeworks(account.username, session);
 

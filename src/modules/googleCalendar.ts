@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { PronoteStudentSession } from 'pronote-api-maintained';
+import { SessionHandle } from 'pawnote';
 import { Account } from '../utils/config';
 import { getUser, setUser } from '../utils/database';
 import findLessonEndDate from '../utils/findLessonEndDate';
@@ -7,9 +7,9 @@ import { getGoogleAPI } from '../utils/google';
 import { GCalendarColors } from '../utils/locale';
 import { getTimetable } from '../utils/pronote';
 
-export async function googleCalendar(
+export default async function googleCalendar(
   account: Account,
-  session: PronoteStudentSession
+  session: SessionHandle
 ) {
   const calendarId = account.modules.googleCalendar.calendarId ?? 'primary';
 

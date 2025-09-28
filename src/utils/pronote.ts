@@ -1,11 +1,11 @@
-import { login, PronoteStudentSession } from 'pronote-api-maintained';
+import { createSessionHandle, loginCredentials, SessionHandle, gradebook, timetableFromIntervals, assignmentsFromIntervals, AccountKind, gradesOverview } from 'pawnote';
 import { Averages, Grades, Homeworks, Timetable } from '../types';
 import { Account, config } from './config';
 import { hashGrade, hashHomework } from './hashing';
 import { SubjectNames } from './locale';
 
 const caches = {
-  sessions: new Map<string, PronoteStudentSession>(),
+  sessions: new Map<string, SessionHandle>(),
   grades: new Map<string, Grades>(),
   timetable: new Map<string, Timetable>(),
   homeworks: new Map<string, Homeworks>(),
@@ -25,21 +25,22 @@ function getCurrentMonday() {
 
 export async function getSession(
   account: Account
-): Promise<PronoteStudentSession> {
+): Promise<SessionHandle> {
   const cached = caches.sessions.get(account.username);
   if (cached) return cached;
 
-  const session = await login(
-    account.url,
-    account.username,
-    account.password,
-    account.cas
-  );
-  session.setKeepAlive(true);
+  const session = createSessionHandle();
+  await loginCredentials(session, {
+    url: account.url,
+    username: account.username,
+    password: account.password,
+    kind: AccountKind.STUDENT,
+    deviceUUID: 'smartpronote-' + Math.random().toString(36).substring(7)
+  });
 
-  setTimeout(async () => {
-    session.setKeepAlive(false);
-    await session.logout();
+  // Note: pawnote doesn't have explicit keepalive/logout methods
+  setTimeout(() => {
+    // Session will expire naturally
   }, config.accountTimeout);
 
   caches.sessions.set(account.username, session);
@@ -54,26 +55,32 @@ export async function getSession(
 
 export async function getGrades(
   username: string,
-  session: PronoteStudentSession
+  session: SessionHandle
 ): Promise<Grades> {
   const cached = caches.grades.get(username);
   if (cached) return cached;
 
-  const raw = await session.marks().catch(() => null);
+  const raw = await gradebook(session, { 
+    name: 'current', 
+    id: '1', 
+    kind: 0, 
+    startDate: new Date(new Date().getFullYear(), 8, 1), // September 1st
+    endDate: new Date(new Date().getFullYear() + 1, 5, 30) // June 30th next year
+  }).catch(() => null);
   const grades: Grades = [];
 
   for (const subject of raw?.subjects ?? []) {
-    for (const mark of subject.marks) {
+    for (const mark of subject.grades ?? []) {
       const grade = {
         subject: SubjectNames[subject.name] ?? subject.name,
-        average: mark.average,
-        coefficient: mark.coefficient,
-        comment: mark.title,
-        date: mark.date,
-        best: mark.max,
-        worst: mark.min,
-        scale: mark.scale,
-        value: mark.value,
+        average: mark.average || 0,
+        coefficient: mark.coefficient || 1,
+        comment: mark.comment || '',
+        date: mark.date || new Date(),
+        best: mark.max || 20,
+        worst: mark.min || 0,
+        scale: mark.scale || 20,
+        value: mark.value || 0,
       };
 
       grades.push({ ...grade, hash: hashGrade(grade) });
@@ -91,7 +98,7 @@ export async function getGrades(
 
 export async function getTimetable(
   username: string,
-  session: PronoteStudentSession
+  session: SessionHandle
 ): Promise<Timetable> {
   const cached = caches.timetable.get(username);
   if (cached) return cached;
@@ -103,18 +110,17 @@ export async function getTimetable(
     currentMonday.getTime() + 5 * 24 * 3600 * 1000
   );
 
-  const raw = await session
-    .timetable(currentMonday, currentFriday)
+  const raw = await timetableFromIntervals(session, currentMonday, currentFriday)
     .catch(() => null);
   const timetable: Timetable =
     raw?.map((v) => ({
-      from: v.from,
-      room: v.room,
-      subject: SubjectNames[v.subject] ?? v.subject,
-      teacher: v.teacher,
-      to: v.to,
-      absent: v.isAway,
-      cancelled: v.isCancelled,
+      from: v.start,
+      room: v.classroom || '',
+      subject: SubjectNames[v.subject?.name] ?? v.subject?.name ?? '',
+      teacher: v.teacher?.name || '',
+      to: v.end,
+      absent: v.isCancelled || false,
+      cancelled: v.isCancelled || false,
     })) ?? [];
 
   if (raw) {
@@ -127,7 +133,7 @@ export async function getTimetable(
 
 export async function getHomeworks(
   username: string,
-  session: PronoteStudentSession
+  session: SessionHandle
 ): Promise<Homeworks> {
   const cached = caches.homeworks.get(username);
   if (cached) return cached;
@@ -138,19 +144,18 @@ export async function getHomeworks(
     // 150 days in the future
     yesterday.getTime() + 151 * 24 * 3600 * 1000
   );
-  const raw = await session
-    .homeworks(yesterday, farAwayInTime)
+  const raw = await assignmentsFromIntervals(session, yesterday, farAwayInTime)
     .catch(() => null);
 
   const homeworks: Homeworks =
     raw?.map((v) => {
       const homework = {
-        content: v.description,
-        due: new Date(v.for.getTime() + 3 * 60 * 60 * 1000), // We add 3 hours because a homework is always for the day before its due at 11PM
-        files: v.files.map((f) => ({ name: f.name, url: f.url })),
-        givenAt: v.givenAt,
-        subject: SubjectNames[v.subject] ?? v.subject,
-        done: v.done,
+        content: v.description || '',
+        due: new Date(v.date.getTime() + 3 * 60 * 60 * 1000), // We add 3 hours because a homework is always for the day before its due at 11PM
+        files: v.attachments?.map((f) => ({ name: f.name, url: f.url })) || [],
+        givenAt: v.givenAt || new Date(),
+        subject: SubjectNames[v.subject?.name] ?? v.subject?.name ?? '',
+        done: v.done || false,
       };
 
       return { ...homework, hash: hashHomework(homework) };
@@ -166,16 +171,22 @@ export async function getHomeworks(
 
 export async function getAverages(
   username: string,
-  session: PronoteStudentSession
+  session: SessionHandle
 ): Promise<Averages> {
   const cached = caches.averages.get(username);
   if (cached) return cached;
 
-  const raw = await session.marks().catch(() => null);
+  const raw = await gradesOverview(session, { 
+    name: 'current', 
+    id: '1', 
+    kind: 0, 
+    startDate: new Date(new Date().getFullYear(), 8, 1), // September 1st
+    endDate: new Date(new Date().getFullYear() + 1, 5, 30) // June 30th next year
+  }).catch(() => null);
 
   const averages: Averages = {
-    value: raw?.averages?.student ?? 0,
-    everyone: raw?.averages?.studentClass ?? 0,
+    value: raw?.studentAverage?.value ?? 0,
+    everyone: raw?.classAverage?.value ?? 0,
   };
 
   if (raw) {
