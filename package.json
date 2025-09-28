@@ -34,6 +34,6 @@
     "express": "^4.18.2",
     "googleapis": "^110.0.0",
     "node-fetch": "^2.6.7",
-    "pronote-api-maintained": "github:RichardDorian/pronote-api"
+    "pawnote": "^1.6.2"
   }
 }
