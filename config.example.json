@@ -1,0 +1,27 @@
+{
+  "enableApi": true,
+  "accountTimeout": 300000,
+  "refreshEvery": 600000,
+  "accounts": [
+    {
+      "url": "https://your-school.index-education.net/pronote/",
+      "username": "your-username",
+      "password": "your-password",
+      "cas": "none",
+      "google": {
+        "email": "your-email@gmail.com"
+      },
+      "modules": {
+        "googleCalendar": {
+          "calendarId": "primary"
+        },
+        "googleTasks": {
+          "taskListId": "your-task-list-id"
+        },
+        "iftttGrades": {
+          "key": "your-ifttt-webhook-key"
+        }
+      }
+    }
+  ]
+}
